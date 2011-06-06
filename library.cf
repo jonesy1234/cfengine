@@ -1,0 +1,80 @@
+##########################
+# AIX Package Management
+##########################
+
+body package_method aix_lpp
+
+{
+aix::
+
+ package_changes => "individual";
+
+ package_list_command => "/usr/bin/lslpp -Oru -cl";
+
+ package_list_name_regex    => "^[^:]+\:([^\s:]+)";
+ package_list_version_regex => "^[^:]+\:[^:]+\:([^\s:]+)";
+ package_list_update_ifelapsed => "240";                # 4 hours
+
+ package_installed_regex => "^[^:]+\:[^:]+\:[^:]+\:\:(COMMITTED|APPLIED).*";
+
+ package_name_convention => "$(name)";
+
+ package_add_command => "/bin echo dummy";
+ package_delete_command => "/bin echo dummy";
+ package_verify_command => "/usr/bin/lppchk -fm3";
+ package_noverify_returncode => "1";
+
+}
+
+##########################
+# Redhat Package Management
+##########################
+
+body package_method yum_custom
+{
+package_changes => "bulk";
+package_list_command => "/usr/bin/yum list installed";
+
+# Remember to escape special characters like |
+
+package_list_name_regex    => "([^.]+).*";
+package_list_version_regex => "[^\s]\s+([^\s]+).*";
+package_list_arch_regex    => "[^.]+\.([^\s]+).*";
+
+package_installed_regex => ".*installed.*";
+package_name_convention => "$(name).$(arch)";
+
+package_add_command => "/usr/bin/yum -y install";
+package_delete_command => "/bin/rpm -e";
+package_verify_command => "/bin/rpm --nomd5 --nosize --nomtime -V";
+package_noverify_returncode => "1";
+}
+
+##
+
+body package_method yum_rpm_custom
+# Contributed by Trond Hasle Amundsen
+
+# More efficient package method for RedHat - uses rpm to list instead of yum
+# Notes:
+# - using $(name).$(arch) instead of $(name) for package_name_convention
+#   causes uninstallation to fail.
+# - using allmatches to remove for all architectures
+#
+{
+  package_changes => "bulk";
+  package_list_command => "/bin/rpm -qa --qf '%{name} %{version}-%{release} %{arch}\n'";
+
+  package_list_name_regex    => "^(\S+?)\s\S+?\s\S+$";
+  package_list_version_regex => "^\S+?\s(\S+?)\s\S+$";
+  package_list_arch_regex    => "^\S+?\s\S+?\s(\S+)$";
+
+  package_installed_regex => ".*";
+  package_name_convention => "$(name)";
+
+  package_add_command    => "/usr/bin/yum -y install";
+  package_update_command => "/usr/bin/yum -y update";
+  package_delete_command => "/bin/rpm -e --allmatches";
+  package_verify_command => "/bin/rpm --nomd5 --nosize --nomtime -V";
+  package_noverify_returncode => "1";
+}

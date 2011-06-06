@@ -1,0 +1,245 @@
+## Note requires bundles from library.cf
+
+bundle agent configure_oid_authentication
+{
+vars:
+
+  "master_etc_conf"           string   => "/var/cfengine/masterfiles/etc";
+
+  ##################################################################################################
+  #AIX Specific variables note we don't touch VIOS authentication methods
+  aix.!vios::
+
+    #Added as global expansion not working for commands at present
+    #Usernames used to enable LDAP authentication for specified accounts
+    "user_name" slist => {"user1", "user2",
+                          "user3", "user4",
+                          "user5", "user6",
+                          "user7"};
+
+    #Define oid servers and connection credentials
+    "oid_servers"               string   => "server1.example.com.au,server2.example.com.au";
+    "ldap_bind_account"         string   => "cn=ldapbindaccount,cn=Users,dc=example,dc=com,dc=au";
+    "ldap_bind_pass"            string   => "ldapbindpassword";
+    "key_store_pass"            string   => "keystorepassword";
+    "ldap_keydb"                string   => "/etc/security/ldap/key.kdb";
+
+    #AIX Packages that are required for LDAP authentication
+    "match_package"             slist    => {
+                                            "idsldap.cltbase61.rte",
+                                            "idsldap.clt32bit61.rte",
+                                            "idsldap.clt64bit61.rte",
+                                            "idsldap.clt_max_crypto32bit61.rte",
+                                            "idsldap.clt_max_crypto64bit61.rte",
+                                            "gsksa.rte",
+                                            "gskta.rte"
+                                         };
+
+    #Certificate data files that are managed via cfengine
+    "aix_ldap_files"            slist    => {
+                                            "key.crl",
+                                            "key.kdb",
+                                            "key.rdb",
+                                            "key.sth"
+                                         };
+
+ ######################################################################################################
+ #Redhat Specific variables
+ redhat::
+
+   #Redhat Packages that are required for LDAP authentication
+    "match_package"             slist    => {
+                                            "cyrus-sasl",
+                                            "openssl",
+                                            "openldap",
+                                            "openldap-clients"
+                                         };
+
+packages:
+
+  #####################################################################################################
+  #AIX Packages - Note we don't touch VIOS authentication methods
+  aix&!vios::
+
+    #Match all the packages from the vars above
+    "$(match_package)"
+
+      comment        => "Verifiy that all packages required for LDAP authentication are installed",
+      package_policy => "verify",
+      package_method => aix_lpp,
+      classes        => if_notkept("software_needs_installing");
+
+  #####################################################################################################
+  #Redhat Packages
+  redhat::
+
+     #Match all the packages from the vars above
+    "$(match_package)"
+
+      comment        => "Verifiy that all packages required for LDAP authentication are installed",
+      package_policy => "verify",
+      package_method => yum_rpm_custom,
+      classes        => if_notkept("software_needs_installing");
+
+
+processes:
+
+  #####################################################################################################
+  #AIX Processes
+  #Check to make sure secldapclntd daemon is running. Don't bother checking if the class software_needs_installing is defined
+  !software_needs_installing&aix!vios::
+
+    "secldapclntd"
+
+         #Only restart it if runmksecldap binary has been run
+         restart_class => "run_mksecldap";
+
+  #####################################################################################################
+  #Redhat Processes
+  !software_needs_installing&redhat::
+
+    "/usr/sbin/nscd"
+
+        #Only restart it if configuration files have changed
+        restart_class => "ldap_reconfigured";
+
+files:
+
+  #####################################################################################################
+  #AIX Files
+  #Copy down the certificate database from the policy server. Don't bother if the class software_needs_installing is defined
+  !software_needs_installing&aix&!vios::
+
+      "/etc/security/ldap"
+
+         comment      => "Copy down the certificate database files from the policy server",
+         copy_from    => secure_cp("$(master_etc_conf)/security/ldap/","$(g.policy_server)"),
+         depth_search => recurse("inf"),
+         #If the database file did not exist or were repaired we need to run mksecldap so define the class run_mksecldap
+         classes      => if_repaired("run_mksecldap");
+
+      "/etc/security/ldap/$(aix_ldap_files)"
+
+         comment => "Change ownership to root:security",
+         perms => mog("644","root","security");
+
+  #####################################################################################################
+  #Redhat Files
+  #Only proceed to this point if the software pre-reqs have been met
+  !software_needs_installing&redhat::
+
+      "/etc/pam.d/gdm"
+
+         comment   => "Add the following entry for ldap authentication",
+         edit_line => append_if_no_line("session   required   pam_mkhomedir.so   skel=/etc/skel   umask=0022");
+
+      "/etc/pam.d/login"
+
+         comment   => "Add the following entry for ldap authentication",
+         edit_line => append_if_no_line("session required pam_limits.so
+session   required   pam_mkhomedir.so   skel=/etc/skel   umask=0022");
+
+      "/etc/pam.d/sshd"
+
+         comment   => "Add the following entry for ldap authentication",
+         edit_line => append_if_no_line("session   required   pam_mkhomedir.so   skel=/etc/skel   umask=0022");
+
+      "/etc/pam.d/su"
+
+         comment   => "Add the following entry for ldap authentication",
+         edit_line => append_if_no_line("session   required   pam_mkhomedir.so   skel=/etc/skel   umask=0022");
+
+      "/etc/pam.d/system-auth-ac"
+
+         comment   => "Copy down central version of system-auth-ac file",
+         perms     => mog("644","root","root"),
+         copy_from => secure_cp("$(master_etc_conf)/pam.d/system-auth-ac","$(g.policy_server)");
+
+   ########################################################################################################################
+   #The following files all need nscd restarted if the configuration files change so the class ldap_configured is defined #
+   ########################################################################################################################
+
+      "/etc/nsswitch.conf"
+
+         comment   => "Copy down central version of nsswitch.conf file",
+         perms     => mog("644","root","root"),
+         copy_from => secure_cp("$(master_etc_conf)/nsswitch.conf","$(g.policy_server)");
+
+      "/etc/ldap.conf"
+
+         comment   => "Copy down central version of ldap.conf file",
+         perms     => mog("644","root","root"),
+         copy_from => secure_cp("$(master_etc_conf)/ldap.conf","$(g.policy_server)"),
+         classes      => if_repaired("ldap_reconfigured");
+
+      "/etc/nscd.conf"
+
+         comment   => "Copy down central version of nscd.conf file",
+         perms     => mog("644","root","root"),
+         copy_from => secure_cp("$(master_etc_conf)/nscd.conf","$(g.policy_server)"),
+         classes      => if_repaired("ldap_reconfigured");
+
+      "/etc/openldap/ldap.conf"
+
+         comment   => "Copy down central version of openldap ldap.conf file",
+         perms     => mog("644","root","root"),
+         copy_from => secure_cp("$(master_etc_conf)/openldap/ldap.conf","$(g.policy_server)"),
+         classes      => if_repaired("ldap_reconfigured");
+
+      "/etc/oracle-certs/ca.pem"
+
+         comment   => "Copy down central version of oracle certs file",
+         perms     => mog("644","root","root"),
+         copy_from => secure_cp("$(master_etc_conf)/oracle-certs/nrdoid01-masoid01-ca.pem","$(g.policy_server)"),
+         classes      => if_repaired("ldap_reconfigured");
+
+commands:
+
+  #AIX Specific variables note we don't touch VIOS authentication methods
+  aix&!vios::
+
+    run_mksecldap::
+
+      #Run the mksecldap binary to configure LDAP authentication
+      "/usr/sbin/mksecldap -c -h $(oid_servers) -a $(ldap_bind_account) -p $(ldap_bind_pass) -d dc=corp,dc=asciano,dc=ad -n 636 -k $(ldap_keydb) -w $(key_store_pass) -A ldap_auth",
+      #If this was run we need to restart secldapclntd daemon so define the class restart_secldapclntd
+      classes => if_ok("restart_secldapclntd");
+
+      #Initate a restart of the secldapclntd daemon if the class restart_secldapclntd exists
+      "/usr/sbin/restart-secldapclntd",
+      ifvarclass => canonify("restart_secldapclntd");
+
+      #For each of the users in the username vars set the authentication type to LDAP only initated if the LDAP configuration is fix via the class restart_secldapclntd
+      "/usr/bin/chsec -f /etc/security/user -s $(user_name) -a \"SYSTEM=LDAP or files\"",
+        ifvarclass => canonify("restart_secldapclntd");
+
+      #For each of the users in the username vars set the authentication type to LDAP only initated if the LDAP configuration is fix via the class restart_secldapclntd
+      "/usr/bin/chsec -f /etc/security/user -s $(user_name) -a \"registry=LDAP\"",
+        ifvarclass => canonify("restart_secldapclntd");
+
+  redhat::
+
+    ldap_reconfigured::
+
+      "/sbin/service nscd restart",
+      comment    => "Restarting nscd service as ldap configuration completed";
+
+reports:
+
+   software_needs_installing::
+
+      #Report that the AIX/Redhat LDAP software needs to be installed before LDAP authentication can be configured
+      "Additional software needs installing for ldap authentication";
+
+   restart_secldapclntd::
+
+      #Report that the ldap configuraiton has been setup/changed so daemon restarted
+      "mksecldapclntd daemon restarted as ldap authentication has been setup or changed";
+
+   ldap_configured::
+
+      #Report that the ldap configuraiton has been setup/changed so daemon restarted
+      "nscd daemon restarted as ldap authentication has been setup or changed";
+
+}
+
