@@ -1,0 +1,167 @@
+########################################################################
+# - managed_services.cf
+#
+# Used to managed service with single configuration files such as
+# ssh, ntp, syslog
+#
+# daemon, cfg_file, mode, user, group, start and enable commands must
+# be set in vars section of services bundle
+########################################################################
+
+bundle agent manage_core_services {
+
+vars:
+
+   redhat::
+
+      "service" slist => { "ntp", "syslog" };
+
+   aix::
+
+      "service" slist => { "ntp", "syslog" };
+
+methods:
+
+  "any" usebundle => fix_service("$(service)"),
+    comment => "Make sure the basic application services are running";
+
+}
+
+#######################################################################
+
+bundle agent fix_service(service) {
+
+vars:
+
+   "conf_source" string => "/var/cfengine/masterfiles";
+
+  redhat::
+
+         "append_conf"          string => "redhat";
+     #SSH
+         "daemon[ssh]"          string => "sshd";
+         "cfg_file[ssh]"        string => "/etc/ssh/sshd_config";
+         "mode[ssh]"            string => "0600";
+         "user[ssh]"            string => "root";
+         "group[ssh]"           string => "root";
+         "start[ssh]"           string => "/sbin/service sshd restart";
+         "enable[ssh]"          string => "/sbin/chkconfig sshd on";
+     #NTP
+         "daemon[ntp]"          string => "ntpd";
+         "cfg_file[ntp]"        string => "/etc/ntp.conf";
+         "mode[ntp]"            string => "0640";
+         "user[ntp]"            string => "root";
+         "group[ntp]"           string => "root";
+         "start[ntp]"           string => "/sbin/service ntpd restart";
+         "enable[ntp]"          string => "/sbin/chkconfig ntpd on";
+     #SYSLOG
+         "daemon[syslog]"       string => "syslog";
+         "cfg_file[syslog]"     string => "/etc/syslog.conf";
+         "mode[syslog]"         string => "0644";
+         "user[syslog]"         string => "root";
+         "group[syslog]"        string => "root";
+         "start[syslog]"        string => "/sbin/service syslog restart";
+         "enable[syslog]"       string => "/sbin/chkconfig syslog on";
+
+  aix::
+
+         "append_conf"          string => "aix";
+     #SSH
+         "daemon[ssh]"          string => "sshd";
+         "cfg_file[ssh]"        string => "/etc/ssh/sshd_config";
+         "mode[ssh]"            string => "0644";
+         "user[ssh]"            string => "root";
+         "group[ssh]"           string => "system";
+     #NTP
+         "daemon[ntp]"          string => "xntpd";
+         "cfg_file[ntp]"        string => "/etc/ntp.conf";
+         "mode[ntp]"            string => "0664";
+         "user[ntp]"            string => "root";
+         "group[ntp]"           string => "system";
+     #SYSLOG
+         "daemon[syslog]"       string => "syslogd";
+         "cfg_file[syslog]"     string => "/etc/syslog.conf";
+         "mode[syslog]"         string => "0644";
+         "user[syslog]"         string => "root";
+         "group[syslog]"        string => "system";
+
+  sunos_5_11::
+
+         "append_conf"          string => "solaris";
+     #SSH
+         "service_name[ssh]"    string => "svc:/network/sshd:default";
+         "daemon[ssh]"          string => "sshd";
+         "cfg_file[ssh]"        string => "/etc/ssh/sshd_config";
+         "mode[ssh]"            string => "0644";
+         "user[ssh]"            string => "root";
+         "group[ssh]"           string => "system";
+     #NTP
+         "service_name[ntp]"    string => "svc:/network/ntp:default";
+         "daemon[ntp]"          string => "ntpd";
+         "cfg_file[ntp]"        string => "/etc/inet/ntp.conf";
+         "mode[ntp]"            string => "0664";
+         "user[ntp]"            string => "root";
+         "group[ntp]"           string => "system";
+     #SYSLOG
+         "service_name[syslog]" string => "svc:/network/syslog:default";
+         "daemon[syslog]"       string => "syslogd";
+         "cfg_file[syslog]"     string => "/etc/syslog.conf";
+         "mode[syslog]"         string => "0644";
+         "user[syslog]"         string => "root";
+         "group[syslog]"        string => "system";
+
+files:
+
+    "$(cfg_file[$(service)])"
+
+           copy_from => secure_cp("$(conf_source)$(cfg_file[$(service)]).$(append_conf)", "$(g.policy_server)"),
+           perms => mog("$(mode[$(service)])","$(user[$(service)])","$(group[$(service)])"),
+           classes => if_repaired("$(service)_restart"),
+           comment => "Copy a stock configuration file template from repository";
+
+    aix::
+
+       "/var/adm/maillog"
+
+           perms => mog("644", "root", "system"),
+           create => "true";
+
+       "/var/adm/authlog"
+
+           perms => mog("644", "root", "system"),
+           create => "true";
+
+       "/var/adm/messages"
+
+           perms => mog("644", "root", "system"),
+           create => "true";
+
+processes:
+
+    "$(daemon[$(service)])"
+         comment => "Check that the server process is running, and start if necessary",
+         restart_class => canonify("$(service)_restart");
+
+commands:
+
+   redhat::
+
+    "$(start[$(service)])"
+      comment => "Method for starting this service",
+      ifvarclass => canonify("$(service)_restart");
+
+    "$(enable[$(service)])"
+      comment => "Method for enabling this service",
+      ifvarclass => canonify("$(service)_restart");
+
+    aix::
+      "/usr/bin/stopsrc -s $(daemon[$(service)])",
+      ifvarclass => canonify("$(service)_restart");
+      "/usr/bin/startsrc -s $(daemon[$(service)])",
+      ifvarclass => canonify("$(service)_restart");
+
+    sunos_5_11::
+      "/usr/sbin/svcadm restart $(service_name[$(service)])",
+      ifvarclass => canonify("$(service)_restart");
+
+}
