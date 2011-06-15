@@ -1,0 +1,35 @@
+bundle agent audit_useraccounts
+{
+vars:
+
+ "removed_user_name" slist => {"user1", "user2",
+                       		"user3", "user4" };
+
+ "target_dirs" slist => {"/usr/local/bin", "/usr/local/etc", "/app_scripts", "/app_logs" };
+
+classes:
+
+   "$(removed_user_name)" expression  => userexists("$(removed_user_name)");
+
+files:
+
+  Hr08.Min25_30::
+
+    "$(target_dirs)"
+
+        file_select => ownership("$(removed_user_name)"),
+        #transformer => "/bin/echo DETECTED $(this.promiser)",
+        depth_search => recurse("inf"),
+        ifvarclass => canonify("$(removed_user_name)"),
+        classes => state_repaired("owned_files_found");
+
+reports:
+
+  Hr08.Min25_30::
+
+    "The account_to_remove=\"$(removed_user_name)\" exists on $(sys.host), please remove",
+    ifvarclass => canonify("$(removed_user_name)");
+
+    "Resolve ownership of accounts to be removed on $(sys.host)",
+    ifvarclass => canonify("owned_files_found");
+}
