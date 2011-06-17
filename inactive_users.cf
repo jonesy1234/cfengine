@@ -1,0 +1,98 @@
+body common control
+
+{
+any::
+
+  bundlesequence  => { "inactive_users" };
+}
+#######################################################
+bundle agent inactive_users
+{
+vars:
+
+  aix::
+
+    "all_users"                 slist => getusers("sysadmin,cougha,jennik,cheunb,rashlp,georgp,joness1,strohg,root,daemon,bin,sys,adm,uucp,guest,nobody,lpd,lp,invscout,snapp,ipsec,nuucp,sshd,esaadmin,dsagent","0");
+
+  redhat::
+
+    "all_users"                 slist => getusers("sysadmin,cougha,jennik,cheunb,rashlp,georgp,joness1,strohg,,oracle,root,bin,daemon,adm,lp,sync,shutdown,halt,mail,news,uucp,operator,games,gopher,ftp,nobody,nscd,distcache,vcsa,pcap,apache,rpc,mailnull,smmsp,webalizer,squid,ntp,xfs,sshd,rpcuser,dbus,avahi,haldaemon,avahi-autoipd,gdm,nfsnobody,sabayon","0");
+
+methods:
+
+  aix::
+
+    "aix" usebundle     => inactive_user_check_aix("$(all_users)");
+
+  redhat::
+
+    "redhat" usebundle  => inactive_user_check_redhat("$(all_users)");
+
+}
+
+bundle agent inactive_user_check_aix(user)
+{
+vars:
+
+  "datecmd"                     string => "/usr/bin/date";
+  "exprcmd"                     string => "/usr/bin/expr";
+  "lsusercmd"                   string => "/usr/sbin/lsuser";
+  "epoch_null"                  string => "";
+  "epoch_less_90_days"          string => execresult("$(exprcmd) $($(datecmd) +%s) - 7776000","useshell"),
+                                policy => "overridable";
+  "user_logon_time_epoch"       string => execresult("$(lsusercmd) -a time_last_login $(user) | awk -F\= '{print $2}' ","useshell");
+  "user_logon_time_human"       string => execresult("/usr/bin/perl -e 'print \"\".localtime $(user_logon_time_epoch)'","useshell");
+
+classes:
+
+  "ok"                  expression      => islessthan("$(epoch_less_90_days)","$(user_logon_time_epoch)");
+  "never_logged_on"     expression      => strcmp("$(epoch_null)","$(user_logon_time_epoch)");
+
+reports:
+
+ ok::
+
+   "OK - $(user) logged on $(user_logon_time_human)";
+
+ !ok.!never_logged_on::
+
+   "WARNING - user_inactive=\"$(user)\" not logged in within 90 days last_logon=\"$(user_logon_time_human)\"";
+
+ !ok.never_logged_on::
+
+   "WARNING - user_never_logged_in=\"$(user)\" never logged on";
+}
+
+bundle agent inactive_user_check_redhat(user)
+{
+vars:
+
+  "datecmd"                     string => "/bin/date";
+  "exprcmd"                     string => "/usr/bin/expr";
+  "lastlogcmd"                  string => "/usr/bin/lastlog";
+  "epoch_null"                  string => "0";
+  "epoch_less_90_days"          string => execresult("$(exprcmd) $($(datecmd) +%s) - 7776000","useshell"),
+                                policy => "overridable";
+  "user_logon_time_human"       string => execresult("$(lastlogcmd) -u $(user) | awk 'NR==2 {if ($4 ==\"in**\"){print \"0\"} else {print $4\" \"$5\" \"$6\" \"$7\" \"$8\" \"$9}'}","useshell");
+  "user_logon_time_epoch"       string => execresult("$(datecmd) -d '$(user_logon_time_human)' '+%s'","useshell");
+
+classes:
+
+  "ok"                  expression      => islessthan("$(epoch_less_90_days)","$(user_logon_time_epoch)");
+  "never_logged_on"     expression      => strcmp("$(epoch_null)","$(user_logon_time_human)");
+
+reports:
+
+ ok.!never_logged_on::
+
+   "OK - $(user) logged on $(user_logon_time_human)";
+
+ !ok.!never_logged_on::
+
+   "WARNING - user_inactive=\"$(user)\" not logged in within 90 days last_logon=\"$(user_logon_time_human)\"";
+
+ ok.never_logged_on::
+
+   "WARNING - user_never_logged_in=\"$(user)\" never logged on";
+}
+
