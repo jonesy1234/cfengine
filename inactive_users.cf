@@ -12,11 +12,11 @@ vars:
 
   aix::
 
-    "all_users"                 slist => getusers("sysadmin,cougha,jennik,cheunb,rashlp,georgp,joness1,strohg,root,daemon,bin,sys,adm,uucp,guest,nobody,lpd,lp,invscout,snapp,ipsec,nuucp,sshd,esaadmin,dsagent","0");
+    "all_users"                 slist => getusers("sysadmin,root,daemon,bin,sys,adm,uucp,guest,nobody,lpd,lp,invscout,snapp,ipsec,nuucp,sshd,esaadmin,dsagent","0");
 
   redhat::
 
-    "all_users"                 slist => getusers("sysadmin,cougha,jennik,cheunb,rashlp,georgp,joness1,strohg,,oracle,root,bin,daemon,adm,lp,sync,shutdown,halt,mail,news,uucp,operator,games,gopher,ftp,nobody,nscd,distcache,vcsa,pcap,apache,rpc,mailnull,smmsp,webalizer,squid,ntp,xfs,sshd,rpcuser,dbus,avahi,haldaemon,avahi-autoipd,gdm,nfsnobody,sabayon","0");
+    "all_users"                 slist => getusers("sysadmin,oracle,root,bin,daemon,adm,lp,sync,shutdown,halt,mail,news,uucp,operator,games,gopher,ftp,nobody,nscd,distcache,vcsa,pcap,apache,rpc,mailnull,smmsp,webalizer,squid,ntp,xfs,sshd,rpcuser,dbus,avahi,haldaemon,avahi-autoipd,gdm,nfsnobody,sabayon","0");
 
 methods:
 
