@@ -1,0 +1,46 @@
+#!/bin/bash
+if [[ -x /usr/sbin/ovmd ]] ; then
+   TMP_FILE="/tmp/.ovmd_data.$$"
+   TMP_SLIST_FILE="/tmp/.slist_data.$$"
+   SLIST_FILE="/var/cfengine/state/ovmd_slist_data"
+
+   touch $TMP_SLIST_FILE
+   touch $SLIST_FILE
+   /usr/sbin/ovmd -l | /bin/sed "s/{//g;s/}//g;s/\"//g" | awk -F: '{print $1,$2}' > $TMP_FILE
+
+   cp -f $SLIST_FILE $TMP_SLIST_FILE
+
+   while read TAG VALUE
+   do
+     # Look for the correct cfengine classes tag
+     if [[ `echo $TAG | egrep -ic "^cfengine.slist*"` == 1 ]] ; then
+	# Extract the var value from the tag
+	VAR=`echo $TAG | awk -F\. '{print $3}'`
+		# If not in slist file then add
+		if [[ `grep -ic $VAR $SLIST_FILE` == 0 ]] ; then
+			cp -f $SLIST_FILE $TMP_SLIST_FILE
+			# Split VALUE into required format
+			SPLIT_VALUE=`echo $VALUE | /bin/sed "s/,/\",\"/g"`
+  			/bin/echo "@$VAR={\"$SPLIT_VALUE\"}" >> $TMP_SLIST_FILE
+			cp -f $TMP_SLIST_FILE $SLIST_FILE
+			ovmd -r $TAG > /dev/null
+		else
+		# Remove the value and then add back in
+			cp -f $SLIST_FILE $TMP_SLIST_FILE
+			sed '/@'"$VAR"'=/d' $TMP_SLIST_FILE > $SLIST_FILE
+			cp -f $SLIST_FILE $TMP_SLIST_FILE
+                        # Split VALUE into required format
+                        SPLIT_VALUE=`echo $VALUE | /bin/sed "s/,/\",\"/g"`
+                        /bin/echo "@$VAR= { \"$SPLIT_VALUE\" }" >> $TMP_SLIST_FILE
+                        cp -f $TMP_SLIST_FILE $SLIST_FILE
+                        ovmd -r $TAG > /dev/null
+		fi
+     fi
+   done < $TMP_FILE
+   rm $TMP_FILE $TMP_SLIST_FILE
+
+# Post results to cfengine
+while read line; do echo "$line"; done < $SLIST_FILE
+else
+   exit 0
+fi
