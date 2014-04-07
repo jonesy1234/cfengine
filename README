@@ -1,15 +1,3 @@
-If your like me and want to create a really slick configuration to manage your servers
-then cfengine is the tool of your dreams. I won't start going on about it here but just
-go to the following to get an idea of how it can help you become the ultimate sysadmin!
+Policy and stuff I'd like to share....
 
 http://www.cfengine.org/
-
-Start off with the community edition and pay for it if you start using it all the time as
-you get more features! I wish every company had a community and a enterprise edition!
-
-Anyway this collection here is some bundles of promises/polices that I've been working on 
-and improving over the last 6 months of using cfengine. It's not provided as a working
-configuration, only posted on git to help any newbies that are giving it a crack.
-
-Cheers
-Steve.
